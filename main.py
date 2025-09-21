@@ -758,6 +758,59 @@ def perform_clustering_analysis(df):
 # Perform clustering analysis
 cluster_results = perform_clustering_analysis(df_processed)
 
+# ====== Interpolasi Hasil Clustering Menjadi Peta Global ======
+print("Melakukan interpolasi cluster untuk seluruh wilayah global...")
+
+from sklearn.ensemble import RandomForestClassifier
+
+# Gunakan data hasil clustering
+features = ['latitude', 'longitude', 'temperature_celsius', 'humidity', 'pressure_mb', 'wind_kph']
+df_train = df_processed.copy()
+df_train['cluster'] = cluster_results['kmeans_cluster']  # Label hasil clustering
+
+X_train = df_train[features]
+y_train = df_train['cluster']
+
+# Latih model klasifikasi
+clf = RandomForestClassifier(n_estimators=100, random_state=42)
+clf.fit(X_train, y_train)
+
+# Buat grid global (resolusi 1 derajat)
+lats = np.arange(-90, 91, 1)
+lons = np.arange(-180, 181, 1)
+
+grid = []
+for lat in lats:
+    for lon in lons:
+        grid.append({
+            'latitude': lat,
+            'longitude': lon,
+            'temperature_celsius': df_train['temperature_celsius'].mean(),
+            'humidity': df_train['humidity'].mean(),
+            'pressure_mb': df_train['pressure_mb'].mean(),
+            'wind_kph': df_train['wind_kph'].mean()
+        })
+
+grid_df = pd.DataFrame(grid)
+grid_df['predicted_cluster'] = clf.predict(grid_df[features])
+
+# Visualisasi dengan Plotly
+import plotly.express as px
+
+fig = px.scatter_geo(
+    grid_df,
+    lat='latitude',
+    lon='longitude',
+    color='predicted_cluster',
+    title='Peta Interpolasi Global Cluster Cuaca',
+    projection="natural earth",
+    color_discrete_sequence=px.colors.qualitative.Set3
+)
+fig.update_traces(marker=dict(size=4))
+fig.write_html("figures/global_cluster_interpolation.html")
+print("Peta interpolasi berhasil dibuat: figures/global_cluster_interpolation.html")
+
+
 # ## 8. Time Series Analysis for Seasonal Patterns
 
 def simulate_time_series_data(df):
@@ -892,26 +945,33 @@ def analyze_time_series(ts_df):
     # Create a time series with the correct frequency
     ts = pd.Series(single_loc_data['temperature'].values, index=single_loc_data['date'])
     
+    # PERBAIKAN: Buat data siklus ganda dengan menggandakan data yang ada
+    # Duplikasi data untuk membuat 2 siklus (dengan indeks yang berbeda)
+    second_year_index = pd.date_range(start='2024-01-01', periods=len(ts), freq='D')
+    ts_second_year = pd.Series(ts.values, index=second_year_index)
+    ts_extended = pd.concat([ts, ts_second_year])
+    
     # Import statsmodels for time series decomposition
     from statsmodels.tsa.seasonal import seasonal_decompose
     
-    # Perform decomposition
-    result = seasonal_decompose(ts, model='additive', period=365)
+    # Perform decomposition dengan data yang sudah diperpanjang
+    result = seasonal_decompose(ts_extended, model='additive', period=365)
     
     # Plot the decomposition
     fig, axes = plt.subplots(4, 1, figsize=(14, 16), sharex=True)
     
-    result.observed.plot(ax=axes[0], legend=False)
+    # Hanya plot data tahun pertama untuk visualisasi yang lebih bersih
+    result.observed.iloc[:365].plot(ax=axes[0], legend=False)
     axes[0].set_ylabel('Observed', fontsize=14)
     axes[0].set_title(f'Time Series Decomposition for {temperate_location}', fontsize=18)
     
-    result.trend.plot(ax=axes[1], legend=False)
+    result.trend.iloc[:365].plot(ax=axes[1], legend=False)
     axes[1].set_ylabel('Trend', fontsize=14)
     
-    result.seasonal.plot(ax=axes[2], legend=False)
+    result.seasonal.iloc[:365].plot(ax=axes[2], legend=False)
     axes[2].set_ylabel('Seasonal', fontsize=14)
     
-    result.resid.plot(ax=axes[3], legend=False)
+    result.resid.iloc[:365].plot(ax=axes[3], legend=False)
     axes[3].set_ylabel('Residual', fontsize=14)
     
     plt.tight_layout()
@@ -920,7 +980,7 @@ def analyze_time_series(ts_df):
     # ARIMA forecasting
     from statsmodels.tsa.arima.model import ARIMA
     
-    # Fit ARIMA model
+    # Fit ARIMA model - menggunakan data asli (1 tahun)
     arima_model = ARIMA(ts, order=(1, 0, 1))
     arima_result = arima_model.fit()
     

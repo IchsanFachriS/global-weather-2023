@@ -1,0 +1,20 @@
+
+# Sample requests for the Weather and Air Quality Prediction API
+
+# For temperature prediction
+curl -X POST -H "Content-Type: application/json" -d '{
+    "latitude": 34.05,
+    "longitude": -118.24,
+    "day_of_year": 172
+}' http://localhost:5000/api/predict/temperature
+
+# For air quality prediction
+curl -X POST -H "Content-Type: application/json" -d '{
+    "temperature_celsius": 25.5,
+    "humidity": 60,
+    "wind_kph": 10.2,
+    "pressure_mb": 1012.5,
+    "cloud": 25,
+    "country": "United States",
+    "climate_zone": "Temperate"
+}' http://localhost:5000/api/predict/air-quality
